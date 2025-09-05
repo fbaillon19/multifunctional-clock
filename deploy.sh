@@ -33,6 +33,7 @@ BACKUP_DIR="$PROJECT_DIR/.backups"
 CHECK_ONLY=false
 FORCE_DEPLOY=false
 CREATE_BACKUP=false
+DEV_MODE=false  # New flag for development mode
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -46,6 +47,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --backup)
       CREATE_BACKUP=true
+      shift
+      ;;
+    --dev)
+      DEV_MODE=true
       shift
       ;;
     -h|--help)
@@ -172,7 +177,12 @@ check_code_quality() {
   
   # Check for debug mode
   if grep -q "#define DEBUG_MODE.*true" "$ARDUINO_DIR/config.h" 2>/dev/null; then
-    print_warning "DEBUG_MODE is enabled - consider disabling for production"
+    if [ "$DEV_MODE" = false ]; then
+      print_warning "DEBUG_MODE is enabled - consider disabling for production"
+      print_status "  Use --dev flag to suppress this warning during development"
+    else
+      print_status "DEBUG_MODE enabled (development mode)"
+    fi
   fi
   
   # Check file sizes (Arduino has memory constraints)
@@ -211,7 +221,12 @@ run_tests() {
       print_warning "Compilation test failed - check your code"
     fi
   else
-    print_warning "Arduino CLI not found - skipping compilation test"
+    if [ "$DEV_MODE" = false ]; then
+      print_warning "Arduino CLI not found - skipping compilation test"
+      print_status "  Install Arduino CLI for automatic compilation testing"
+    else
+      print_status "Arduino CLI not found - skipping compilation test (development mode)"
+    fi
   fi
 }
 
