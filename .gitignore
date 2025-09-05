@@ -4,7 +4,16 @@
 # SENSITIVE CONFIGURATION FILES
 # ===========================================
 # Never commit files containing passwords or API keys
-secrets.h
+
+# Arduino sketch sensitive files
+firmware/multifunctional-clock/secrets.h
+firmware/multifunctional-clock/config_local.h
+
+# Any secrets.h in any subdirectory (but allow .template files)
+**/secrets.h
+!**/secrets.h.template
+
+# Local configuration overrides
 config_local.h
 
 # ===========================================
@@ -85,3 +94,4 @@ serial_output.txt
 # Personal calibration files (user-specific)
 calibration_personal.h
 sensor_offsets.txt
+firmware/multifunctional-clock/secrets.h
