@@ -33,7 +33,8 @@ BACKUP_DIR="$PROJECT_DIR/.backups"
 CHECK_ONLY=false
 FORCE_DEPLOY=false
 CREATE_BACKUP=false
-DEV_MODE=false  # New flag for development mode
+DEV_MODE=false
+USE_COMMIT_HELPER=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -53,11 +54,17 @@ while [[ $# -gt 0 ]]; do
       DEV_MODE=true
       shift
       ;;
+    --interactive)
+      USE_COMMIT_HELPER=true
+      shift
+      ;;
     -h|--help)
-      echo "Usage: $0 [--check-only] [--force] [--backup]"
+      echo "Usage: $0 [--check-only] [--force] [--backup] [--dev] [--interactive]"
       echo "  --check-only    Only validate, don't commit"
       echo "  --force         Skip validation warnings"
       echo "  --backup        Create backup before deploy"
+      echo "  --dev           Development mode (ignore some warnings)"
+      echo "  --interactive   Use interactive commit helper"
       exit 0
       ;;
     *)
@@ -265,11 +272,17 @@ commit_and_push() {
   fi
   
   # Get commit message
-  echo -n "Enter commit message (or press Enter for default): "
-  read -r commit_message
-  
-  if [ -z "$commit_message" ]; then
-    commit_message="Update multifunctional clock - $(date +"%Y-%m-%d %H:%M")"
+  if $USE_COMMIT_HELPER && [ -f "$PROJECT_DIR/commit.sh" ]; then
+    print_status "Using interactive commit helper..."
+    bash "$PROJECT_DIR/commit.sh"
+    return
+  else
+    echo -n "Enter commit message (or press Enter for default): "
+    read -r commit_message
+    
+    if [ -z "$commit_message" ]; then
+      commit_message="Update multifunctional clock - $(date +"%Y-%m-%d %H:%M")"
+    fi
   fi
   
   # Commit
