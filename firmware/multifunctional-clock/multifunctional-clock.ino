@@ -5,6 +5,7 @@
 #include "NetworkManager.h"
 #include "UIManager.h"
 #include "TimerManager.h"
+#include "TestManager.h"
 
 // Gestionnaires principaux
 TimerManager timerMgr;
@@ -13,6 +14,7 @@ SensorManager sensorMgr;
 DisplayManager displayMgr;
 NetworkManager networkMgr;
 UIManager uiMgr;
+TestManager testMgr;
 
 // Variables globales d'état
 unsigned long lastSensorRead = 0;
@@ -24,6 +26,10 @@ void setup() {
   
   // Initialisation séquentielle avec gestion d'erreurs
   Serial.println("=== Horloge Multifonctions v1.0 ===");
+
+  #if DEBUG_MODE
+  testMgr.enableTestMode(true);
+  #endif
   
   if (!timerMgr.init()) {
     Serial.println("ERREUR: Impossible d'initialiser le timer");
@@ -86,6 +92,12 @@ void loop() {
     lastSensorRead = currentTime;
   }
   
+static unsigned long lastTestStatus = 0;
+if (millis() - lastTestStatus > 30000) { // Toutes les 30s
+  testMgr.printTestStatus();
+  lastTestStatus = millis();
+}
+
   // Synchronisation réseau (une fois par jour)
   if (currentTime - lastNetworkSync >= NETWORK_SYNC_INTERVAL) {
     if (networkMgr.isConnected()) {
