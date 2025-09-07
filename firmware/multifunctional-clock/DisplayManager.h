@@ -140,7 +140,18 @@ public:
     }
     
     // Calculate how many LEDs to light based on air quality level
-    int ledsToLight = map(airQuality, 0, 500, 1, LED_STRIP_AIR_COUNT);
+    int ledsToLight;
+    if (airQuality <= AIR_EXCELLENT_MAX) {        // 0-50 PPM
+      ledsToLight = map(airQuality, 0, 50, 2, 4);
+    } else if (airQuality <= AIR_GOOD_MAX) {      // 51-100 PPM  
+      ledsToLight = map(airQuality, 51, 100, 4, 6);
+    } else if (airQuality <= AIR_MODERATE_MAX) {  // 101-200 PPM
+      ledsToLight = map(airQuality, 101, 200, 6, 8);
+    } else if (airQuality <= AIR_POOR_MAX) {      // 201-300 PPM
+      ledsToLight = map(airQuality, 201, 300, 8, 9);
+    } else {                                       // 300+ PPM
+      ledsToLight = 10;  // All LEDs
+    }
     ledsToLight = constrain(ledsToLight, 1, LED_STRIP_AIR_COUNT);
     
     // Clear all LEDs

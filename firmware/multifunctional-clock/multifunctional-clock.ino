@@ -4,9 +4,11 @@
 #include "DisplayManager.h"
 #include "NetworkManager.h"
 #include "UIManager.h"
+#include "TimerManager.h"
 
 // Gestionnaires principaux
-ClockManager clockMgr;
+TimerManager timerMgr;
+ClockManager clockMgr(&timerMgr);
 SensorManager sensorMgr;
 DisplayManager displayMgr;
 NetworkManager networkMgr;
@@ -23,6 +25,11 @@ void setup() {
   // Initialisation séquentielle avec gestion d'erreurs
   Serial.println("=== Horloge Multifonctions v1.0 ===");
   
+  if (!timerMgr.init()) {
+    Serial.println("ERREUR: Impossible d'initialiser le timer");
+    while(1) delay(1000);
+  }
+
   if (!displayMgr.init()) {
     Serial.println("ERREUR: Impossible d'initialiser l'affichage");
     while(1) delay(1000); // Arrêt critique
@@ -92,7 +99,7 @@ void loop() {
   updateDisplay();
   
   // Petite pause pour éviter la saturation du processeur
-  delay(50);
+//  delay(50);
 }
 
 /**

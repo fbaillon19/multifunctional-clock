@@ -6,9 +6,9 @@
 // ===========================================
 
 // Pins LED
-#define LED_RING_MINUTES_PIN    6   // 60 LEDs pour minutes/secondes
-#define LED_RING_HOURS_PIN      7   // 12 LEDs pour heures  
-#define LED_STRIP_AIR_PIN       8   // 10 LEDs qualité air
+#define LED_RING_MINUTES_PIN    9    // 60 LEDs pour minutes/secondes
+#define LED_RING_HOURS_PIN      10   // 12 LEDs pour heures  
+#define LED_STRIP_AIR_PIN       11   // 10 LEDs qualité air
 
 // Nombre de LEDs
 #define LED_RING_MINUTES_COUNT  60
@@ -16,15 +16,15 @@
 #define LED_STRIP_AIR_COUNT     10
 
 // Pins capteurs
-#define DHT22_INDOOR_PIN        2
-#define DHT22_OUTDOOR_PIN       3
+#define DHT22_INDOOR_PIN        5   // Capteur température intérieure
+#define DHT22_OUTDOOR_PIN       6   // Capteur température extérieure
 #define BMP180_SDA_PIN         A4
 #define BMP180_SCL_PIN         A5
 #define MQ135_PIN              A0
 
 // Pins interface utilisateur
-#define BUTTON_MODE_PIN         4
-#define BUTTON_SELECT_PIN       5
+#define BUTTON_MODE_PIN         2   // Bouton poussoir 1
+#define BUTTON_SELECT_PIN       3   // Bouton poussoir 2
 
 // LCD I2C
 #define LCD_I2C_ADDRESS      0x27
@@ -49,8 +49,6 @@
 // CONFIGURATION WIFI
 // ===========================================
 
-#define WIFI_SSID            "VotreSSID"
-#define WIFI_PASSWORD        "VotreMotDePasse"
 #define WIFI_TIMEOUT         10000       // 10 secondes
 
 // API Web

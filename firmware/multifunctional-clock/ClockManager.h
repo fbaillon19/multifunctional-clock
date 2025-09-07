@@ -1,24 +1,23 @@
 /**
  * @file ClockManager.h
- * @brief Clock and time management for Multifunctional Clock
+ * @brief Clock and LED display management for Multifunctional Clock
  * @author Your Name
- * @version 1.0
+ * @version 2.0
  * @date 2025
  * 
- * This class handles time keeping, NTP synchronization, and LED clock display.
- * It manages two LED rings (60 LEDs for minutes/seconds, 12 LEDs for hours)
- * and provides animations for hour transitions.
+ * This class handles LED clock display and NTP synchronization.
+ * Timing is now managed by TimerManager using hardware RTC interrupts.
  */
 
 #ifndef CLOCK_MANAGER_H
 #define CLOCK_MANAGER_H
 
 #include "config.h"
-#include <WiFi.h>
+#include "TimerManager.h"
+#include <WiFiS3.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h>
 #include <FastLED.h>
-#include <TimeLib.h>
 
 /**
  * @struct TimeInfo
@@ -37,17 +36,19 @@ struct TimeInfo {
 
 /**
  * @class ClockManager
- * @brief Manages time keeping and LED clock display
+ * @brief Manages LED clock display and NTP synchronization
  * 
  * The ClockManager handles:
- * - Time synchronization via NTP
  * - LED ring management for visual clock display
  * - Hour transition animations
  * - Night mode brightness adjustment
- * - Time validation and error handling
+ * - NTP synchronization (delegating timing to TimerManager)
  */
 class ClockManager {
 private:
+  // Reference to timer manager
+  TimerManager* timerMgr;
+  
   // NTP client for time synchronization
   WiFiUDP ntpUDP;
   NTPClient* timeClient;
@@ -56,17 +57,8 @@ private:
   CRGB minutesLEDs[LED_RING_MINUTES_COUNT];  ///< 60 LEDs for minutes/seconds
   CRGB hoursLEDs[LED_RING_HOURS_COUNT];      ///< 12 LEDs for hours
   
-  // Current time information
-  TimeInfo currentTime;
-  unsigned long lastTimeUpdate;
+  // Display state
   bool timeValidated;
-  
-  // Animation state
-  bool inHourAnimation;
-  unsigned long animationStart;
-  int animationStep;
-  
-  // Night mode state
   bool nightModeActive;
   uint8_t currentBrightness;
   
@@ -74,41 +66,33 @@ private:
   int lastHour;
   int lastMinute;
   int lastSecond;
+  
+  // Animation state
+  int animationStep;
+  int firstPixelHue;
 
 public:
   /**
    * @brief Constructor
    * 
-   * Initializes time client and LED arrays.
+   * @param timer Pointer to TimerManager instance
    */
-  ClockManager() : 
+  ClockManager(TimerManager* timer) : 
+    timerMgr(timer),
     timeClient(nullptr),
-    lastTimeUpdate(0),
     timeValidated(false),
-    inHourAnimation(false),
-    animationStart(0),
-    animationStep(0),
     nightModeActive(false),
     currentBrightness(255),
     lastHour(-1),
     lastMinute(-1),
-    lastSecond(-1) {
-    
-    // Initialize time structure
-    currentTime.hours = 0;
-    currentTime.minutes = 0;
-    currentTime.seconds = 0;
-    currentTime.day = 1;
-    currentTime.month = 1;
-    currentTime.year = 2025;
-    currentTime.weekday = 1;
-    currentTime.isValid = false;
-  }
+    lastSecond(-1),
+    animationStep(0),
+    firstPixelHue(0) {}
   
   /**
    * @brief Initialize the clock manager
    * 
-   * Sets up NTP client, LED strips, and initial time.
+   * Sets up NTP client and LED strips.
    * 
    * @return true if initialization successful, false otherwise
    */
@@ -134,8 +118,6 @@ public:
       return false;
     }
     
-    lastTimeUpdate = millis();
-    
     DEBUG_PRINTLN("ClockManager initialized successfully");
     return true;
   }
@@ -143,36 +125,30 @@ public:
   /**
    * @brief Update clock state
    * 
-   * Should be called every second to update time and LED display.
+   * Called from main loop to handle display updates and animations.
    */
   void update() {
-    unsigned long currentMillis = millis();
-    
-    // Update internal time (every second)
-    if (currentMillis - lastTimeUpdate >= 1000) {
-      updateInternalTime();
-      lastTimeUpdate = currentMillis;
+    // Check if timer indicates we should update display
+    if (timerMgr->hasSecondTick()) {
+      updateLEDDisplay();
     }
     
-    // Check for night mode
-    updateNightMode();
-    
     // Handle hour animations
-    if (inHourAnimation) {
+    if (timerMgr->isAnimationActive()) {
       updateHourAnimation();
     }
     
-    // Update LED display if time changed
-    if (hasTimeChanged()) {
-      updateLEDDisplay();
-      updateLastDisplayedTime();
+    // Check for hour animation trigger
+    if (timerMgr->shouldStartHourAnimation()) {
+      timerMgr->startAnimation(5000); // 5 second animation
     }
+    
+    // Update night mode
+    updateNightMode();
   }
   
   /**
    * @brief Synchronize time with NTP server
-   * 
-   * Attempts to get current time from NTP server and update internal clock.
    * 
    * @return true if synchronization successful, false otherwise
    */
@@ -193,21 +169,19 @@ public:
     }
     
     if (timeClient->isTimeSet()) {
-      // Get epoch time and convert to local time
+      // Get epoch time and set in TimerManager
       unsigned long epochTime = timeClient->getEpochTime();
-      setTime(epochTime);
-      
-      // Update our time structure
-      updateTimeFromEpoch(epochTime);
+      timerMgr->setTimeFromEpoch(epochTime, TIMEZONE_OFFSET);
       
       timeValidated = true;
       
+      RTCTime currentTime = timerMgr->getCurrentTime();
       DEBUG_PRINT("NTP sync successful. Time: ");
-      DEBUG_PRINT(currentTime.hours);
+      DEBUG_PRINT(currentTime.getHour());
       DEBUG_PRINT(":");
-      DEBUG_PRINT(currentTime.minutes);
+      DEBUG_PRINT(currentTime.getMinutes());
       DEBUG_PRINT(":");
-      DEBUG_PRINTLN(currentTime.seconds);
+      DEBUG_PRINTLN(currentTime.getSeconds());
       
       return true;
     } else {
@@ -222,7 +196,19 @@ public:
    * @return TimeInfo structure with current time
    */
   TimeInfo getCurrentTime() const {
-    return currentTime;
+    RTCTime rtcTime = timerMgr->getCurrentTime();
+    
+    TimeInfo timeInfo;
+    timeInfo.hours = rtcTime.getHour();
+    timeInfo.minutes = rtcTime.getMinutes();
+    timeInfo.seconds = rtcTime.getSeconds();
+    timeInfo.day = rtcTime.getDayOfMonth();
+    timeInfo.month = (int)rtcTime.getMonth();
+    timeInfo.year = rtcTime.getYear();
+    timeInfo.weekday = (int)rtcTime.getDayOfWeek();
+    timeInfo.isValid = timerMgr->isTimeValid();
+    
+    return timeInfo;
   }
   
   /**
@@ -231,123 +217,101 @@ public:
    * @return true if time has been synchronized with NTP
    */
   bool isTimeValid() const {
-    return timeValidated && currentTime.isValid;
+    return timeValidated && timerMgr->isTimeValid();
   }
   
   /**
    * @brief Force LED display update
-   * 
-   * Updates LED rings immediately regardless of time changes.
    */
   void forceDisplayUpdate() {
     updateLEDDisplay();
   }
-  
-  /**
-   * @brief Trigger hour change animation
-   * 
-   * Starts the special animation sequence for hour transitions.
-   */
-  void triggerHourAnimation() {
-    if (!inHourAnimation) {
-      inHourAnimation = true;
-      animationStart = millis();
-      animationStep = 0;
-      DEBUG_PRINTLN("Starting hour animation");
-    }
-  }
 
 private:
   /**
-   * @brief Update internal time counter
-   * 
-   * Increments seconds and handles minute/hour rollovers.
+   * @brief Update LED display based on current time
    */
-  void updateInternalTime() {
-    currentTime.seconds++;
+  void updateLEDDisplay() {
+    RTCTime currentTime = timerMgr->getCurrentTime();
     
-    if (currentTime.seconds >= 60) {
-      currentTime.seconds = 0;
-      currentTime.minutes++;
+    // Check if time actually changed
+    if (currentTime.getHour() == lastHour && 
+        currentTime.getMinutes() == lastMinute && 
+        currentTime.getSeconds() == lastSecond) {
+      return; // No change, skip update
+    }
+    
+    // Clear all LEDs
+    clearAllLEDs();
+    
+    // Convert to 12-hour format for display
+    int displayHour = currentTime.getHour() % 12;
+    
+    // Set hour LED
+    hoursLEDs[displayHour] = CRGB(COLOR_HOURS >> 16, (COLOR_HOURS >> 8) & 0xFF, COLOR_HOURS & 0xFF);
+    
+    // Set minute LED
+    minutesLEDs[currentTime.getMinutes()] = CRGB(COLOR_MINUTES >> 16, (COLOR_MINUTES >> 8) & 0xFF, COLOR_MINUTES & 0xFF);
+    
+    // Set second LED
+    minutesLEDs[currentTime.getSeconds()] = CRGB(COLOR_SECONDS >> 16, (COLOR_SECONDS >> 8) & 0xFF, COLOR_SECONDS & 0xFF);
+    
+    // Handle overlap (when minute and second are the same)
+    if (currentTime.getMinutes() == currentTime.getSeconds()) {
+      minutesLEDs[currentTime.getMinutes()] = CRGB(COLOR_OVERLAP >> 16, (COLOR_OVERLAP >> 8) & 0xFF, COLOR_OVERLAP & 0xFF);
+    }
+    
+    // Show the updated LEDs
+    FastLED.show();
+    
+    // Update last displayed values
+    lastHour = currentTime.getHour();
+    lastMinute = currentTime.getMinutes();
+    lastSecond = currentTime.getSeconds();
+  }
+  
+  /**
+   * @brief Update hour transition animation
+   */
+  void updateHourAnimation() {
+    int animTimer = timerMgr->getAnimationTimer();
+    
+    if (animTimer > 0) {
+      // Utiliser la logique de ton code original
+      // Clear minute/second ring for animation
+      for (int i = 0; i < LED_RING_MINUTES_COUNT; i++) {
+        minutesLEDs[i] = CRGB::Black;
+      }
       
-      if (currentTime.minutes >= 60) {
-        currentTime.minutes = 0;
-        currentTime.hours++;
-        
-        // Trigger hour animation
-        triggerHourAnimation();
-        
-        if (currentTime.hours >= 24) {
-          currentTime.hours = 0;
-          // Day rollover - could be enhanced to handle dates properly
-        }
+      // Animation rainbow simplifiée
+      for (int c = animationStep; c < LED_RING_MINUTES_COUNT; c += 3) {
+        int hue = firstPixelHue + c * 65536L / LED_RING_MINUTES_COUNT;
+        // Conversion HSV vers RGB basique
+        uint8_t r = (hue >> 16) & 0xFF;
+        uint8_t g = (hue >> 8) & 0xFF;
+        uint8_t b = hue & 0xFF;
+        minutesLEDs[c] = CRGB(r, g, b);
       }
+      
+      FastLED.show();  // Utiliser FastLED.show() pas minutesLEDs.show()
+      
+      // Update animation parameters
+      animationStep = (animationStep + 1) % 3;
+      firstPixelHue += 65536 / 50;
+    } else {
+      // Animation terminée
+      animationStep = 0;
+      firstPixelHue = 0;
     }
-  }
-  
-  /**
-   * @brief Update time structure from epoch timestamp
-   * 
-   * @param epochTime Unix timestamp
-   */
-  void updateTimeFromEpoch(unsigned long epochTime) {
-    // Apply timezone offset
-    epochTime += TIMEZONE_OFFSET * 3600;
-    
-    // Apply DST offset if needed (simplified - could be more sophisticated)
-    // TODO: Implement proper DST calculation
-    epochTime += DST_OFFSET * 3600;
-    
-    currentTime.seconds = epochTime % 60;
-    epochTime /= 60;
-    currentTime.minutes = epochTime % 60;
-    epochTime /= 60;
-    currentTime.hours = epochTime % 24;
-    epochTime /= 24;
-    
-    // Calculate day of week (Sunday = 0)
-    currentTime.weekday = (epochTime + 4) % 7; // Epoch started on Thursday
-    
-    // Calculate year, month, day (simplified)
-    unsigned long days = epochTime;
-    currentTime.year = 1970;
-    
-    // Simple year calculation
-    while (days >= 365) {
-      if (isLeapYear(currentTime.year) && days >= 366) {
-        days -= 366;
-        currentTime.year++;
-      } else if (!isLeapYear(currentTime.year)) {
-        days -= 365;
-        currentTime.year++;
-      } else {
-        break;
-      }
-    }
-    
-    // Simple month/day calculation
-    currentTime.month = 1;
-    currentTime.day = days + 1;
-    
-    currentTime.isValid = true;
-  }
-  
-  /**
-   * @brief Check if it's a leap year
-   * 
-   * @param year Year to check
-   * @return true if leap year
-   */
-  bool isLeapYear(int year) {
-    return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
   }
   
   /**
    * @brief Check and update night mode status
    */
   void updateNightMode() {
-    bool shouldBeNightMode = (currentTime.hours >= NIGHT_MODE_START || 
-                             currentTime.hours < NIGHT_MODE_END);
+    RTCTime currentTime = timerMgr->getCurrentTime();
+    bool shouldBeNightMode = (currentTime.getHour() >= NIGHT_MODE_START || 
+                             currentTime.getHour() < NIGHT_MODE_END);
     
     if (shouldBeNightMode != nightModeActive) {
       nightModeActive = shouldBeNightMode;
@@ -356,83 +320,6 @@ private:
       
       DEBUG_PRINT("Night mode ");
       DEBUG_PRINTLN(nightModeActive ? "ON" : "OFF");
-    }
-  }
-  
-  /**
-   * @brief Check if displayed time has changed
-   * 
-   * @return true if time values have changed since last display
-   */
-  bool hasTimeChanged() {
-    return (currentTime.hours != lastHour || 
-            currentTime.minutes != lastMinute || 
-            currentTime.seconds != lastSecond);
-  }
-  
-  /**
-   * @brief Update stored last displayed time
-   */
-  void updateLastDisplayedTime() {
-    lastHour = currentTime.hours;
-    lastMinute = currentTime.minutes;
-    lastSecond = currentTime.seconds;
-  }
-  
-  /**
-   * @brief Update LED display based on current time
-   */
-  void updateLEDDisplay() {
-    // Clear all LEDs
-    clearAllLEDs();
-    
-    // Convert to 12-hour format for display
-    int displayHour = currentTime.hours % 12;
-    
-    // Set hour LED (12 LEDs, so multiply by 5 to get position on minutes ring)
-    hoursLEDs[displayHour] = CRGB(COLOR_HOURS >> 16, (COLOR_HOURS >> 8) & 0xFF, COLOR_HOURS & 0xFF);
-    
-    // Set minute LED
-    minutesLEDs[currentTime.minutes] = CRGB(COLOR_MINUTES >> 16, (COLOR_MINUTES >> 8) & 0xFF, COLOR_MINUTES & 0xFF);
-    
-    // Set second LED
-    minutesLEDs[currentTime.seconds] = CRGB(COLOR_SECONDS >> 16, (COLOR_SECONDS >> 8) & 0xFF, COLOR_SECONDS & 0xFF);
-    
-    // Handle overlap (when minute and second are the same)
-    if (currentTime.minutes == currentTime.seconds) {
-      minutesLEDs[currentTime.minutes] = CRGB(COLOR_OVERLAP >> 16, (COLOR_OVERLAP >> 8) & 0xFF, COLOR_OVERLAP & 0xFF);
-    }
-    
-    // Show the updated LEDs
-    FastLED.show();
-  }
-  
-  /**
-   * @brief Update hour transition animation
-   */
-  void updateHourAnimation() {
-    unsigned long elapsed = millis() - animationStart;
-    
-    if (elapsed < 5000) { // 5 second animation
-      // Create a spinning effect or color wave
-      int pos = (elapsed / 100) % LED_RING_HOURS_COUNT;
-      
-      // Clear hour ring
-      for (int i = 0; i < LED_RING_HOURS_COUNT; i++) {
-        hoursLEDs[i] = CRGB::Black;
-      }
-      
-      // Set animated LEDs
-      for (int i = 0; i < 3; i++) {
-        int ledPos = (pos + i) % LED_RING_HOURS_COUNT;
-        hoursLEDs[ledPos] = CRGB::White;
-      }
-      
-      FastLED.show();
-    } else {
-      // Animation finished
-      inHourAnimation = false;
-      DEBUG_PRINTLN("Hour animation completed");
     }
   }
   
