@@ -19,6 +19,8 @@
 #include <NTPClient.h>
 #include <FastLED.h>
 
+class TestManager;
+
 /**
  * @struct TimeInfo
  * @brief Structure to hold complete time information
@@ -48,6 +50,10 @@ class ClockManager {
 private:
   // Reference to timer manager
   TimerManager* timerMgr;
+  bool shouldTriggerAnimation(int minutes, int seconds);
+  bool animationActive;
+  unsigned long animationStart;
+  int animationStep;
   
   // NTP client for time synchronization
   WiFiUDP ntpUDP;
@@ -68,7 +74,7 @@ private:
   int lastSecond;
   
   // Animation state
-  int animationStep;
+//  int animationStep;
   int firstPixelHue;
 
 public:
@@ -86,8 +92,10 @@ public:
     lastHour(-1),
     lastMinute(-1),
     lastSecond(-1),
-    animationStep(0),
-    firstPixelHue(0) {}
+    firstPixelHue(0),
+    animationActive(false),
+    animationStart(0),
+    animationStep(0) {}
   
   /**
    * @brief Initialize the clock manager
@@ -128,22 +136,31 @@ public:
    * Called from main loop to handle display updates and animations.
    */
   void update() {
-    // Check if timer indicates we should update display
-    if (timerMgr->hasSecondTick()) {
+    RTCTime currentTime = timerMgr->getCurrentTime();
+  
+    // Déclencher animation
+    if (shouldTriggerAnimation(currentTime.getMinutes(), currentTime.getSeconds()) && !animationActive) {
+      animationActive = true;
+      animationStart = millis();
+      animationStep = 0;
+      DEBUG_PRINTLN("Animation démarrée");
+    }
+    
+    // Gérer l'animation
+    if (animationActive) {
+      unsigned long elapsed = millis() - animationStart;
+      if (elapsed > 5000) { // 5 secondes
+        animationActive = false;
+        DEBUG_PRINTLN("Animation terminée");
+        updateLEDDisplay(); // Revenir à l'affichage normal
+      } else {
+        updateHourAnimation();
+      }
+    } else {
+      // Affichage normal de l'horloge
       updateLEDDisplay();
     }
     
-    // Handle hour animations
-    if (timerMgr->isAnimationActive()) {
-      updateHourAnimation();
-    }
-    
-    // Check for hour animation trigger
-    if (timerMgr->shouldStartHourAnimation()) {
-      timerMgr->startAnimation(5000); // 5 second animation
-    }
-    
-    // Update night mode
     updateNightMode();
   }
   
@@ -274,35 +291,31 @@ private:
    * @brief Update hour transition animation
    */
   void updateHourAnimation() {
-    int animTimer = timerMgr->getAnimationTimer();
+    unsigned long elapsed = millis() - animationStart;
     
-    if (animTimer > 0) {
-      // Utiliser la logique de ton code original
-      // Clear minute/second ring for animation
-      for (int i = 0; i < LED_RING_MINUTES_COUNT; i++) {
-        minutesLEDs[i] = CRGB::Black;
-      }
-      
-      // Animation rainbow simplifiée
-      for (int c = animationStep; c < LED_RING_MINUTES_COUNT; c += 3) {
-        int hue = firstPixelHue + c * 65536L / LED_RING_MINUTES_COUNT;
-        // Conversion HSV vers RGB basique
-        uint8_t r = (hue >> 16) & 0xFF;
-        uint8_t g = (hue >> 8) & 0xFF;
-        uint8_t b = hue & 0xFF;
-        minutesLEDs[c] = CRGB(r, g, b);
-      }
-      
-      FastLED.show();  // Utiliser FastLED.show() pas minutesLEDs.show()
-      
-      // Update animation parameters
-      animationStep = (animationStep + 1) % 3;
-      firstPixelHue += 65536 / 50;
-    } else {
-      // Animation terminée
-      animationStep = 0;
-      firstPixelHue = 0;
+    // Clear all LEDs for animation
+    for (int i = 0; i < LED_RING_MINUTES_COUNT; i++) {
+      minutesLEDs[i] = CRGB::Black;
     }
+    
+    // Simple rainbow chase animation
+    int numActive = 10; // Nombre de LEDs allumées
+    int position = (elapsed / 100) % LED_RING_MINUTES_COUNT; // Position qui avance
+    
+    for (int i = 0; i < numActive; i++) {
+      int ledIndex = (position + i) % LED_RING_MINUTES_COUNT;
+      
+      // Couleurs simples qui tournent
+      if (i < 3) {
+        minutesLEDs[ledIndex] = CRGB::Red;
+      } else if (i < 6) {
+        minutesLEDs[ledIndex] = CRGB::Green;
+      } else {
+        minutesLEDs[ledIndex] = CRGB::Blue;
+      }
+    }
+    
+    FastLED.show();
   }
   
   /**

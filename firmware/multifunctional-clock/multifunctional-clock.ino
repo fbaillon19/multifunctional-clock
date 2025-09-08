@@ -8,13 +8,13 @@
 #include "TestManager.h"
 
 // Gestionnaires principaux
+TestManager testMgr;
 TimerManager timerMgr;
 ClockManager clockMgr(&timerMgr);
 SensorManager sensorMgr;
 DisplayManager displayMgr;
 NetworkManager networkMgr;
 UIManager uiMgr;
-TestManager testMgr;
 
 // Variables globales d'état
 unsigned long lastSensorRead = 0;
@@ -147,4 +147,23 @@ void updateDisplay() {
   
   // Air quality LED update (always visible)
   displayMgr.updateAirQualityLED(sensorMgr.getAirQuality());
+}
+
+// Fonction helper pour appliquer les valeurs de test
+void SensorManager::applyTestValues() {
+  if (testMgr.isTestMode()) {
+    currentData.tempIndoor = testMgr.getTestTemperature(currentData.tempIndoor);
+    currentData.tempOutdoor = testMgr.getTestTemperature(currentData.tempOutdoor);
+    currentData.airQuality = testMgr.getTestAirQuality(currentData.airQuality);
+    
+    DEBUG_PRINT("TEST - Temp: ");
+    DEBUG_PRINT(currentData.tempIndoor);
+    DEBUG_PRINT("°C, AQ: ");
+    DEBUG_PRINTLN(currentData.airQuality);
+  }
+}
+
+// Fonction helper pour ClockManager
+bool ClockManager::shouldTriggerAnimation(int minutes, int seconds) {
+  return testMgr.shouldTriggerHourAnimation(minutes, seconds);
 }

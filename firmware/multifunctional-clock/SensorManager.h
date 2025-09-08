@@ -11,6 +11,8 @@
 
 #include "config.h"
 
+class TestManager; // Déclaration forward
+
 /**
  * @struct SensorData
  * @brief Structure to hold all sensor readings
@@ -33,6 +35,7 @@ class SensorManager {
 private:
   SensorData currentData;
   unsigned long lastReading;
+  void applyTestValues();
 
 public:
   /**
@@ -66,28 +69,20 @@ public:
     unsigned long currentTime = millis();
     
     if (currentTime - lastReading >= SENSOR_READ_INTERVAL) {
-      // Simulate sensor readings with small variations
+      // Valeurs de base
       currentData.tempIndoor += (random(-10, 11) / 10.0);
       currentData.tempOutdoor += (random(-10, 11) / 10.0);
-      currentData.humidityIndoor += (random(-5, 6) / 10.0);
-      currentData.humidityOutdoor += (random(-5, 6) / 10.0);
-      currentData.pressure += (random(-10, 11) / 10.0);
       currentData.airQuality += random(-5, 6);
       
-      // Keep values in reasonable ranges
-      currentData.tempIndoor = constrain(currentData.tempIndoor, 18.0, 28.0);
-      currentData.tempOutdoor = constrain(currentData.tempOutdoor, 10.0, 25.0);
-      currentData.humidityIndoor = constrain(currentData.humidityIndoor, 30.0, 70.0);
-      currentData.humidityOutdoor = constrain(currentData.humidityOutdoor, 40.0, 90.0);
-      currentData.pressure = constrain(currentData.pressure, 980.0, 1040.0);
-      currentData.airQuality = constrain(currentData.airQuality, 30, 150);
+      // Appliquer les valeurs de test via une fonction externe
+      applyTestValues();
+      
+      // Contraintes normales
+      currentData.tempIndoor = constrain(currentData.tempIndoor, -20.0, 50.0);
+      currentData.tempOutdoor = constrain(currentData.tempOutdoor, -20.0, 50.0);
+      currentData.airQuality = constrain(currentData.airQuality, 10, 500);
       
       lastReading = currentTime;
-      
-      DEBUG_PRINT("Sensors updated - Temp: ");
-      DEBUG_PRINT(currentData.tempIndoor);
-      DEBUG_PRINT("°C, Air Quality: ");
-      DEBUG_PRINTLN(currentData.airQuality);
     }
   }
   
